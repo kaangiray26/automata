@@ -27,13 +27,14 @@ body {
 }
 
 canvas {
+    z-index: 0;
     width: 100%;
+    position: relative;
     background-color: white;
 }
 
 button {
     all: unset;
-    margin: 4px !important;
     cursor: pointer !important;
     line-height: 1.6 !important;
     border: 1px solid #ccc;
@@ -48,4 +49,17 @@ button:hover {
 
 button:active {
     background-color: #dee2e6;
+}
+
+.controls {
+    z-index: 1;
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    background-color: #e9ecef;
+    padding: 0.5rem;
+    margin: 1rem;
+    border-radius: 0.25rem;
+    display: flex;
+    flex-direction: column;
 }
