@@ -10,13 +10,13 @@
             </canvas>
             <div class="controls">
                 <span>Step: {{ step }}</span>
-                <div class="d-flex">
+                <div class="d-flex justify-content-between">
                     <span class="me-2">Speed: {{ delay }}</span>
                     <input type="range" min="0" max="1000" v-model="delay" @input="change_interval">
                 </div>
-                <div class="d-flex">
-                    <span class="me-2">Zoom: {{ scale }}</span>
-                    <input type="range" min="0" max="10" @input="change_zoom" value="1">
+                <div class="d-flex justify-content-between">
+                    <span class="me-2">Zoom: {{ zoom_scale }}</span>
+                    <input type="range" min="1" max="10" v-model="zoom_scale" @input="change_zoom">
                 </div>
             </div>
         </div>
@@ -25,13 +25,17 @@
                 <button @click="toggle_simulation">{{ running ? "Stop" : "Start" }}</button>
             </div>
         </div>
-        <div class="d-flex flex-column"></div>
+        <div class="d-flex flex-column bg-light rounded border mt-3 p-1" style="word-wrap: anywhere;">
+            <span class="fw-bold text-decoration-underline">Data on the grid:</span>
+            <span>{{ data }}</span>
+        </div>
     </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue';
 
+const data = ref('');
 const size = ref({
     dpi: 0,
     width: 0,
@@ -56,11 +60,9 @@ let pressed = false;
 let canvas = null;
 let ctx = null;
 
-let scale = 1;
-let scaleStep = 0.1;
-let lastScale = scale;
-let maxScale = 10;
-let minScale = 0.1;
+const scale = ref(1);
+const lastScale = ref(1);
+const zoom_scale = ref(10);
 
 let zoomPoint = {
     x: 0,
@@ -112,21 +114,21 @@ function calculate() {
 }
 
 function calculateDistancesToCellBorders() {
-    let dx = zoomPoint.x - lastZoomPoint.x + rx * lastScale;
-    rx = dx - Math.floor(dx / (lastScale * cellSize)) * lastScale * cellSize;
-    rx /= lastScale;
+    let dx = zoomPoint.x - lastZoomPoint.x + rx * lastScale.value;
+    rx = dx - Math.floor(dx / (lastScale.value * cellSize)) * lastScale.value * cellSize;
+    rx /= lastScale.value;
 
-    let dy = zoomPoint.y - lastZoomPoint.y + ry * lastScale;
-    ry = dy - Math.floor(dy / (lastScale * cellSize)) * lastScale * cellSize;
-    ry /= lastScale;
+    let dy = zoomPoint.y - lastZoomPoint.y + ry * lastScale.value;
+    ry = dy - Math.floor(dy / (lastScale.value * cellSize)) * lastScale.value * cellSize;
+    ry /= lastScale.value;
 }
 
 function calculateDrawingPositions() {
-    let scaledCellSize = cellSize * scale;
+    let scaledCellSize = cellSize * scale.value;
 
-    left = zoomPoint.x - rx * scale;
+    left = zoomPoint.x - rx * scale.value;
     right = left + scaledCellSize;
-    top = zoomPoint.y - ry * scale;
+    top = zoomPoint.y - ry * scale.value;
     bottom = top + scaledCellSize;
 }
 
@@ -143,7 +145,7 @@ function draw() {
     ctx.beginPath();
 
     // Draw red origin lines
-    ctx.lineWidth = 1;
+    ctx.lineWidth = lineWidth;
     ctx.strokeStyle = "red";
     ctx.moveTo(zoomPoint.x, 0);
     ctx.lineTo(zoomPoint.x, size.value.height);
@@ -152,7 +154,7 @@ function draw() {
     ctx.stroke();
 
     // Draw grid
-    let scaledCellSize = cellSize * scale;
+    let scaledCellSize = cellSize * scale.value;
     ctx.strokeStyle = lineColor;
 
     for (let x = left; x > 0; x -= scaledCellSize) {
@@ -176,12 +178,12 @@ function draw() {
     }
 
     // Draw cells
-    const x_cells = Math.floor(size.value.width / (cellSize - lineWidth)) - 1;
-    const y_cells = Math.floor(size.value.height / (cellSize - lineWidth)) - 1;
+    const x_cells = Math.floor(size.value.width / (scaledCellSize - lineWidth)) - 1;
+    const y_cells = Math.floor(size.value.height / (scaledCellSize - lineWidth)) - 1;
 
     // Get bounds for cells
-    let x_scrolled = Math.floor(left / (cellSize));
-    let y_scrolled = Math.floor(top / (cellSize));
+    let x_scrolled = Math.floor(left / (scaledCellSize));
+    let y_scrolled = Math.floor(top / (scaledCellSize));
 
     // Filter out cells that are out of bounds
     for (let key of Object.keys(cells.value)) {
@@ -189,11 +191,11 @@ function draw() {
         let val = cells.value[key];
 
         if (x >= -x_scrolled && x <= x_cells - x_scrolled && y >= -y_scrolled && y <= y_cells - y_scrolled) {
-            let x_pos = (x * cellSize) + lineWidth;
-            let y_pos = (y * cellSize) + lineWidth;
+            let x_pos = (x * scaledCellSize) + lineWidth;
+            let y_pos = (y * scaledCellSize) + lineWidth;
 
             ctx.fillStyle = val ? "black" : "white";
-            ctx.fillRect(x_pos + left, y_pos + top, cellSize, cellSize);
+            ctx.fillRect(x_pos + left, y_pos + top, scaledCellSize, scaledCellSize);
         }
     }
 
@@ -231,44 +233,16 @@ function mousemove(event) {
     update();
 }
 
-function wheel(e) {
-    zoom(e.deltaY > 0 ? -1 : 1, {
-        x: e.offsetX,
-        y: e.offsetY
-    });
-
-    calculate();
-    update();
-}
-
-function zoom(amt, point) {
-    lastScale = scale;
-    scale += amt * scaleStep;
-
-    if (scale < minScale) {
-        scale = minScale;
-    }
-
-    if (scale > maxScale) {
-        scale = maxScale;
-    }
-
-    lastZoomPoint = zoomPoint;
-    zoomPoint = point;
-}
-
-
 async function click(event) {
     // Check if editing
     if (!editing.value) return;
 
     // get cell at position
-    let x = Math.floor((event.offsetX - left) / (cellSize - lineWidth));
-    let y = Math.floor((event.offsetY - top) / (cellSize - lineWidth));
+    let x = Math.floor((event.offsetX - left) / ((cellSize - lineWidth) * scale.value));
+    let y = Math.floor((event.offsetY - top) / ((cellSize - lineWidth) * scale.value));
 
     // Change value of cell
     let key = `${x},${y}`;
-    console.log("Cell:", key);
 
     if (cells.value[key]) delete cells.value[key];
     else cells.value[key] = 1;
@@ -302,11 +276,13 @@ async function change_interval() {
 }
 
 async function change_zoom() {
-    //
+    lastScale.value = scale.value;
+    scale.value = 1 / (11 - zoom_scale.value);
+    calculate();
+    update();
 }
 
 function simulation_step() {
-    console.log("Step:", step.value);
     // Calculate next step
     let blocks = {};
 
@@ -327,9 +303,28 @@ function simulation_step() {
         blocks[block][index] = val;
     }
 
+    // Calculate current data
+    // data.value = '';
+    // let keys = Object.keys(blocks);
+
+    // // Get min x i keys
+    // let min_x = Math.min(...keys.map(x => x.split(",")[0]));
+    // let max_x = Math.max(...keys.map(x => x.split(",")[0]));
+
+    // // Get min y i keys
+    // let min_y = Math.min(...keys.map(x => x.split(",")[1]));
+    // let max_y = Math.max(...keys.map(x => x.split(",")[1]));
+
+    // let data_width = max_x - min_x;
+    // let data_height = max_y - min_y;
+    // console.log(data_width, data_height);
+
+    // data.value = '';
+
     // Calculate next step
     for (let key of Object.keys(blocks)) {
         let configuration = blocks[key].join("");
+        data.value += configuration;
         let rule = rules[configuration];
         enforce_rules(key, rule);
     }
