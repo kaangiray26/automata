@@ -2,7 +2,8 @@
     <div ref="container" class="container manrope-bold py-4">
         <h1 class="mb-3">Cellular Automata Compression</h1>
         <div class="d-flex align-items-center">
-            <button @click="switch_mode">{{ editing ? "Edit mode" : "View mode" }}</button>
+            <button class="me-2" @click="switch_mode">{{ editing ? "Edit mode" : "View mode" }}</button>
+            <button @click="reset">Reset</button>
         </div>
         <div class="d-flex position-relative mt-3">
             <canvas @mousedown="mousedown" @mouseup="mouseup" @mousemove="mousemove" @mouseleave="mouseup"
@@ -35,7 +36,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 
-const data = ref('');
+const data = ref([]);
 const size = ref({
     dpi: 0,
     width: 0,
@@ -255,12 +256,21 @@ async function switch_mode() {
     editing.value = !editing.value;
 }
 
+async function reset() {
+    clearInterval(interval.value);
+    running.value = false;
+    cells.value = {};
+    step.value = 0;
+    update();
+}
+
 async function toggle_simulation() {
     editing.value = false;
     running.value = !running.value;
 
     if (running.value) {
         // Start simulation
+        console.log("DATA:", get_data());
         interval.value = setInterval(simulation_step, 1000 - delay.value);
     } else {
         // Stop simulation
@@ -282,7 +292,7 @@ async function change_zoom() {
     update();
 }
 
-function simulation_step() {
+function get_data() {
     // Calculate next step
     let blocks = {};
 
@@ -303,28 +313,63 @@ function simulation_step() {
         blocks[block][index] = val;
     }
 
-    // Calculate current data
-    // data.value = '';
-    // let keys = Object.keys(blocks);
+    let data = [];
+    let [last_x, last_y] = Object.keys(blocks)[0].split(",").map(Number);
+    for (let key of Object.keys(blocks)) {
+        let [x, y] = key.split(",").map(Number);
+        let val = blocks[key];
 
-    // // Get min x i keys
-    // let min_x = Math.min(...keys.map(x => x.split(",")[0]));
-    // let max_x = Math.max(...keys.map(x => x.split(",")[0]));
+        // Get distance between blocks
+        let dx = x - last_x - 1;
+        let dy = y - last_y - 1;
 
-    // // Get min y i keys
-    // let min_y = Math.min(...keys.map(x => x.split(",")[1]));
-    // let max_y = Math.max(...keys.map(x => x.split(",")[1]));
+        // Add empty blocks
+        for (let i = 0; i < dx; i++) {
+            data.push(...[0, 0, 0, 0]);
+        }
 
-    // let data_width = max_x - min_x;
-    // let data_height = max_y - min_y;
-    // console.log(data_width, data_height);
+        for (let i = 0; i < dy; i++) {
+            data.push(...[0, 0, 0, 0]);
+        }
 
-    // data.value = '';
+        // Add block to data
+        data.push(...val);
+
+        // Update last position
+        last_x = x;
+        last_y = y;
+    }
+    // let array_buffer = new Uint8Array(data.value.flat());
+    return data;
+}
+
+function simulation_step() {
+    // Skip if no cells
+    if (!Object.keys(cells.value).length) return;
+
+    // Calculate next step
+    let blocks = {};
+
+    // For each cell, find its corresponding 2x2 block
+    for (let key of Object.keys(cells.value)) {
+        let [x, y] = key.split(",").map(Number);
+        let val = cells.value[key];
+
+        let block_x = Math.floor(x / 2);
+        let block_y = Math.floor(y / 2);
+        let block = `${block_x},${block_y}`;
+
+        // Create block if it does not exist
+        if (!blocks[block]) blocks[block] = [0, 0, 0, 0];
+
+        // Add own value to block
+        let index = (x % 2) + (y % 2) * 2;
+        blocks[block][index] = val;
+    }
 
     // Calculate next step
     for (let key of Object.keys(blocks)) {
         let configuration = blocks[key].join("");
-        data.value += configuration;
         let rule = rules[configuration];
         enforce_rules(key, rule);
     }
