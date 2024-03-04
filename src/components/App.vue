@@ -1,10 +1,6 @@
 <template>
     <div ref="container" class="container manrope-bold py-4">
         <h1 class="mb-3">Cellular Automata Compression</h1>
-        <div class="d-flex align-items-center">
-            <button class="me-2" @click="switch_mode">{{ editing ? "Edit mode" : "View mode" }}</button>
-            <button @click="reset">Reset</button>
-        </div>
         <div class="d-flex position-relative mt-3">
             <canvas @mousedown="mousedown" @mouseup="mouseup" @mousemove="mousemove" @mouseleave="mouseup"
                 @click="click">
@@ -23,7 +19,11 @@
         </div>
         <div class="d-flex flex-column mt-3">
             <div class="d-flex align-items-center">
-                <button @click="toggle_simulation">{{ running ? "Stop" : "Start" }}</button>
+                <button class="me-2" @click="toggle_simulation">{{ running ? "Stop" : "Start" }}</button>
+                <button class="me-2" @click="switch_mode">{{ editing ? "Edit mode" : "View mode" }}</button>
+                <button class="me-2" @click="save_program">Save program</button>
+                <button class="me-2" @click="program_upload.click">Load program</button>
+                <button class="me-2" @click="reset">Reset</button>
             </div>
         </div>
         <div class="d-flex flex-column bg-light rounded border mt-3 p-1" style="word-wrap: anywhere;">
@@ -31,6 +31,8 @@
             <span>{{ data }}</span>
         </div>
     </div>
+    <a ref="download_link" class="d-none"></a>
+    <input ref="program_upload" @change="load_program" type="file" class="d-none" accept="application/json">
 </template>
 
 <script setup>
@@ -48,9 +50,14 @@ const editing = ref(true);
 const running = ref(false);
 
 const step = ref(0);
-const delay = ref(250);
+const delay = ref(500);
 const interval = ref(null);
 const container = ref(null);
+
+const initial_state = ref({});
+const initialized = ref(false);
+const download_link = ref(null);
+const program_upload = ref(null);
 
 const cellSize = 32;
 const backgroundColor = "white";
@@ -79,7 +86,7 @@ let left = 0,
     top = 0,
     bottom = 0;
 
-const rules = {
+let rules = {
     "0000": 0,
     "0001": 1,
     "0010": 2,
@@ -248,6 +255,9 @@ async function click(event) {
     if (cells.value[key]) delete cells.value[key];
     else cells.value[key] = 1;
 
+    // Save configuration if not initialized
+    if (!initialized.value) initial_state.value = cells.value;
+
     // Redraw
     update();
 }
@@ -256,17 +266,53 @@ async function switch_mode() {
     editing.value = !editing.value;
 }
 
+async function save_program() {
+    // Save initial state
+    let data = JSON.stringify({
+        rules: rules,
+        initial_state: initial_state.value,
+    });
+
+    // Create a blob
+    let blob = new Blob([data], { type: "application/json" });
+
+    // Create a link
+    let url = URL.createObjectURL(blob);
+    download_link.value.href = url;
+    download_link.value.download = Date.now() + "_program.json";
+    download_link.value.click();
+
+    // Revoke the object URL
+    URL.revokeObjectURL(url);
+}
+
+async function load_program(event) {
+    // Read file
+    let file = event.target.files[0];
+    let reader = new FileReader();
+
+    reader.onload = function (e) {
+        let data = JSON.parse(e.target.result);
+        rules = data.rules;
+        cells.value = data.initial_state;
+        update();
+    }
+
+    reader.readAsText(file);
+}
+
 async function reset() {
-    clearInterval(interval.value);
-    running.value = false;
-    cells.value = {};
-    step.value = 0;
-    update();
+    window.location.reload();
 }
 
 async function toggle_simulation() {
     editing.value = false;
     running.value = !running.value;
+
+    // Save initial state
+    if (!initialized.value) {
+        initialized.value = true;
+    }
 
     if (running.value) {
         // Start simulation
